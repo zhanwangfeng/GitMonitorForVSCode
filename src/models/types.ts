@@ -164,7 +164,8 @@ export type WebviewAction =
     | { action: 'discard'; path: string }
     | { action: 'viewDiff'; path: string; staged: boolean }
     | { action: 'createTag'; name: string; message?: string; commit?: string }
-    | { action: 'deleteTag'; name: string };
+    | { action: 'deleteTag'; name: string }
+    | { action: 'ignore'; path: string };
 
 /** 状态摘要级别，用于决定图标与颜色 */
 export type StatusLevel = 'clean' | 'dirty' | 'ahead' | 'behind' | 'error' | 'unknown';

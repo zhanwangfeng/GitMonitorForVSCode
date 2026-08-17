@@ -431,17 +431,48 @@ export class GitInfoService {
         return { success: false, message: `删除标签失败: ${r.stderr.trim() || r.stdout.trim()}` };
     }
 
-    /** 获取指定文件差异文本（用于调用 VSCode diff editor） */
-    async getDiffContent(repoPath: string, file: string, staged: boolean): Promise<{ left: string; right: string } | undefined> {
-        // 通过 git show 获取原始版本，工作区版本直接读文件
-        const ref = staged ? `:0:${file}` : `HEAD:${file}`;
-        const [baseRes] = await Promise.all([
-            gitRun(['show', ref], { cwd: repoPath }),
+    /** 返回 HEAD 版本与暂存区 :0: 版本两部分内容；任一不存在则对应为 undefined */
+    async getDiffPair(repoPath: string, file: string): Promise<{ head: string | undefined; index: string | undefined }> {
+        const [headRes, indexRes] = await Promise.all([
+            gitRun(['show', `HEAD:${file}`], { cwd: repoPath }),
+            gitRun(['show', `:0:${file}`], { cwd: repoPath }),
         ]);
-        if (baseRes.exitCode !== 0) {
-            return undefined;
+        return {
+            head: headRes.exitCode === 0 ? headRes.stdout : undefined,
+            index: indexRes.exitCode === 0 ? indexRes.stdout : undefined,
+        };
+    }
+
+    /**
+     * 将指定 pattern 追加到 .gitignore 文件。
+     * - 若 .gitignore 不存在则创建
+     * - 文件末尾无换行时自动补一个
+     * - pattern 去重：已存在完全一致的行则跳过
+     */
+    async ignoreFile(repoPath: string, pattern: string): Promise<GitOpResult> {
+        if (!pattern.trim()) {
+            return { success: false, message: '忽略规则不能为空' };
         }
-        return { left: baseRes.stdout, right: '' }; // right 由调用方读文件
+        const fs = await import('fs');
+        const path = await import('path');
+        const gitignorePath = path.join(repoPath, '.gitignore');
+        try {
+            let existing = '';
+            if (fs.existsSync(gitignorePath)) {
+                existing = fs.readFileSync(gitignorePath, 'utf8');
+            }
+            // 按行去重判断
+            const lines = existing.split(/\r?\n/);
+            if (lines.indexOf(pattern) >= 0) {
+                return { success: true, message: `${pattern} 已在 .gitignore 中` };
+            }
+            // 末尾补换行
+            const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
+            fs.appendFileSync(gitignorePath, `${prefix}${pattern}\n`, 'utf8');
+            return { success: true, message: `已添加到 .gitignore: ${pattern}` };
+        } catch (e) {
+            return { success: false, message: `写入 .gitignore 失败: ${(e as Error).message}` };
+        }
     }
 
     private getDefaultPushRemote(): string {

@@ -172,8 +172,14 @@ export class GitOpsController {
                 break;
             }
             case 'viewDiff':
-                await this.viewDiff(cfg, action.path, action.staged);
+                await this.run(cfg, action.action, cb, () => this.viewDiff(cfg, action.path, action.staged));
                 break;
+            case 'ignore': {
+                const pattern = await this.pickIgnorePattern(action.path);
+                if (!pattern) { return; }
+                await this.run(cfg, action.action, cb, () => this.gitService.ignoreFile(cfg.path, pattern));
+                break;
+            }
             case 'createTag': {
                 const name = await vscode.window.showInputBox({
                     prompt: '输入标签名',
@@ -273,28 +279,134 @@ export class GitOpsController {
             .get<boolean>('operations.confirmDangerous', true);
     }
 
-    /** 调用 VSCode 内置 diff editor 展示文件差异 */
-    private async viewDiff(cfg: RepoConfig, file: string, staged: boolean): Promise<void> {
-        const fullPath = path.join(cfg.path, file);
-        const modifiedUri = vscode.Uri.file(fullPath);
-
-        const r = await this.gitService.getDiffContent(cfg.path, file, staged);
-        if (!r) {
-            // 文件可能是新增的，没有 base 版本，直接打开
-            await vscode.commands.executeCommand('vscode.open', modifiedUri);
-            return;
-        }
-
-        // 写入临时文件作为 base
-        const tmpFile = path.join(os.tmpdir(), `gitmonitor_diff_${Date.now()}_${path.basename(file)}`);
+    /** 调用 VSCode 内置 diff editor 展示文件差异，返回 GitOpResult 供 run() 流程消费 */
+    private async viewDiff(cfg: RepoConfig, file: string, staged: boolean): Promise<GitOpResult> {
         try {
-            fs.writeFileSync(tmpFile, r.left);
-            const baseUri = vscode.Uri.file(tmpFile);
-            const title = `${file} · ${staged ? '暂存区 vs HEAD' : '工作区 vs HEAD'}`;
-            await vscode.commands.executeCommand('vscode.diff', baseUri, modifiedUri, title);
+            const pair = await this.gitService.getDiffPair(cfg.path, file);
+            const fullPath = path.join(cfg.path, file);
+
+            let leftContent: string | undefined;
+            let rightContent: string | undefined;
+            let rightIsWorkspaceFile = false;
+            let title: string;
+
+            if (staged) {
+                // staged=true: 比较「HEAD」 vs 「暂存区 :0:」
+                if (pair.head === undefined && pair.index === undefined) {
+                    return { success: false, message: `无法读取 ${file} 的 HEAD 与暂存区版本` };
+                }
+                // 新增文件场景：HEAD 不存在，只有暂存区
+                if (pair.head === undefined) {
+                    leftContent = '';
+                    rightContent = pair.index;
+                    title = `${file} · (空) ↔ 暂存区（新增）`;
+                } else if (pair.index === undefined) {
+                    return { success: false, message: `暂存区中不存在 ${file}` };
+                } else {
+                    leftContent = pair.head;
+                    rightContent = pair.index;
+                    title = `${file} · HEAD ↔ 暂存区`;
+                    if (leftContent === rightContent) {
+                        return { success: true, message: `${file} 的暂存区内容与 HEAD 一致，无差异` };
+                    }
+                }
+            } else {
+                // staged=false: 比较「HEAD」 vs 「工作区文件」
+                if (pair.head === undefined) {
+                    // 新增未暂存文件（untracked 或新 add 前），直接打开
+                    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(fullPath));
+                    return { success: true, message: '已打开（新增文件）' };
+                }
+                leftContent = pair.head;
+                rightIsWorkspaceFile = true;
+                title = `${file} · HEAD ↔ 工作区`;
+            }
+
+            const baseName = path.basename(file).replace(/[^a-zA-Z0-9._-]/g, '_');
+            const ts = Date.now();
+            const leftUri = this.writeTmp(`gitmonitor_diff_${ts}_left_${baseName}`, leftContent || '');
+            let rightUri: vscode.Uri;
+            if (rightIsWorkspaceFile) {
+                rightUri = vscode.Uri.file(fullPath);
+            } else {
+                rightUri = this.writeTmp(`gitmonitor_diff_${ts}_right_${baseName}`, rightContent || '');
+            }
+            // 在侧边列打开 diff editor，避免覆盖详情 webview panel
+            await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title, {
+                viewColumn: vscode.ViewColumn.Beside,
+                preserveFocus: false,
+            });
+            return { success: true, message: '已打开差异视图' };
         } catch (e) {
-            logger.error('viewDiff error', (e as Error).message);
-            vscode.window.showErrorMessage(`查看差异失败: ${(e as Error).message}`);
+            const msg = (e as Error).message;
+            logger.error('viewDiff error', msg);
+            return { success: false, message: `查看差异失败: ${msg}` };
         }
+    }
+
+    /** 写临时文件并返回 Uri */
+    private writeTmp(suffix: string, content: string): vscode.Uri {
+        const tmpFile = path.join(os.tmpdir(), suffix);
+        fs.writeFileSync(tmpFile, content);
+        return vscode.Uri.file(tmpFile);
+    }
+
+    /**
+     * 弹出路径层级选择列表，让用户选择要忽略到哪一级。
+     * 例如路径 a/b/c/d.txt 会列出：
+     *   a/b/c/d.txt   (精确文件)
+     *   a/b/c/        (目录)
+     *   a/b/
+     *   a/
+     * 文件名也会额外提供 *.ext 形式的通配选项。
+     * 返回选中的 pattern，取消则返回 undefined。
+     */
+    private async pickIgnorePattern(filePath: string): Promise<string | undefined> {
+        const norm = filePath.replace(/\\/g, '/');
+        const parts = norm.split('/').filter(Boolean);
+        if (parts.length === 0) { return undefined; }
+
+        const items: { label: string; description: string; pattern: string }[] = [];
+        // 1. 精确文件路径
+        items.push({
+            label: norm,
+            description: '精确文件',
+            pattern: norm,
+        });
+        // 2. 文件名通配（如果是文件且带扩展名）
+        const last = parts[parts.length - 1];
+        const dotIdx = last.lastIndexOf('.');
+        if (dotIdx > 0 && dotIdx < last.length - 1) {
+            const ext = last.slice(dotIdx + 1);
+            items.push({
+                label: `*.${ext}`,
+                description: '所有同扩展名文件',
+                pattern: `*.${ext}`,
+            });
+        }
+        // 3. 各级目录（从深到浅，目录形式以 / 结尾）
+        for (let i = parts.length - 1; i >= 1; i--) {
+            const dir = parts.slice(0, i).join('/') + '/';
+            items.push({
+                label: dir,
+                description: `目录（共 ${i} 级）`,
+                pattern: dir,
+            });
+        }
+        // 4. 仅文件名
+        items.push({
+            label: last,
+            description: '仅文件名（匹配任意目录下同名文件）',
+            pattern: last,
+        });
+
+        const picked = await vscode.window.showQuickPick(
+            items,
+            {
+                title: `添加到 .gitignore：${norm}`,
+                placeHolder: '选择要忽略的路径层级',
+            },
+        );
+        return picked?.pattern;
     }
 }

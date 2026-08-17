@@ -57,6 +57,12 @@ export class DetailPanel {
             this.panel.webview.html = this.getHtml(this.panel.webview);
             this.panel.onDidDispose(() => { this.panel = undefined; this.currentRepoId = undefined; });
             this.panel.webview.onDidReceiveMessage(msg => this.onMessage(msg as WebviewAction));
+            // panel 重新可见时（如从 diff editor 切回），webview JS 上下文已销毁需重新加载
+            this.panel.onDidChangeViewState(e => {
+                if (e.webviewPanel.visible && this.currentRepoId) {
+                    void this.loadAndRender(this.currentRepoId);
+                }
+            });
         } else {
             this.panel.title = this.buildTitle(cfg);
             this.panel.reveal(vscode.ViewColumn.One, false);
@@ -545,7 +551,7 @@ function parsePayload(btn) {
   const payload = {};
   for (const attr of btn.attributes) {
     if (attr.name.startsWith('data-p-')) {
-      const key = attr.name.slice(6);
+      const key = attr.name.slice(7); // 'data-p-'.length === 7
       payload[key] = attr.value;
     }
   }
@@ -729,7 +735,7 @@ function renderFileGroup(title, files, conflicts, isStagedGroup) {
     const actions = renderFileActions(f, isStagedGroup, conflict);
     return '<li class="' + (conflict ? 'conflict' : '') + '">'
       + '<span class="file-info"><span class="status-tag ' + statusTag(f.status) + (conflict ? ' U' : '') + '">' + (conflict ? 'U' : statusTag(f.status)) + '</span><span class="file-path">' + escapeHtml(f.path) + '</span></span>'
-      + '<span class="file-actions">' + actions + stat + '</span>'
+      + '<span class="file-actions">' + stat + actions + '</span>'
       + '</li>';
   }).join('');
   return '<div class="file-group"><h4>' + escapeHtml(title) + ' (' + files.length + ')</h4><ul class="files">' + items + '</ul></div>';
@@ -744,6 +750,7 @@ function renderFileActions(f, isStagedGroup, conflict) {
   }
   if (f.status === 'untracked') {
     btns += '<button class="small" data-action="stage" data-p-path="' + escapeAttr(f.path) + '">+暂存</button>';
+    btns += '<button class="small secondary" data-action="ignore" data-p-path="' + escapeAttr(f.path) + '">忽略</button>';
   } else if (isStagedGroup) {
     btns += '<button class="small secondary" data-action="unstage" data-p-path="' + escapeAttr(f.path) + '">-取消暂存</button>';
   } else {
