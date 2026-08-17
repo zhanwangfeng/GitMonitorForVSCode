@@ -1,0 +1,180 @@
+{
+  "name": "gitmonitor-for-vscode",
+  "displayName": "Git Monitor",
+  "description": "在 VSCode 侧边栏集中监控多个本地 Git 仓库的状态、分支、提交与文件变更。",
+  "version": "0.1.0",
+  "publisher": "zhanwangfeng",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:gitMonitor.repoList"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gitMonitor",
+          "title": "Git Monitor",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "gitMonitor": [
+        {
+          "id": "gitMonitor.repoList",
+          "name": "仓库监控"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "gitMonitor.addRepo",
+        "title": "Git Monitor: 添加目录",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gitMonitor.refreshAll",
+        "title": "Git Monitor: 全部刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gitMonitor.refreshRepo",
+        "title": "Git Monitor: 刷新该仓库",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gitMonitor.removeRepo",
+        "title": "Git Monitor: 移除监控",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "gitMonitor.openDetail",
+        "title": "Git Monitor: 打开详情"
+      },
+      {
+        "command": "gitMonitor.openInExplorer",
+        "title": "Git Monitor: 在资源管理器中打开"
+      },
+      {
+        "command": "gitMonitor.openInTerminal",
+        "title": "Git Monitor: 在终端中打开"
+      },
+      {
+        "command": "gitMonitor.openSettings",
+        "title": "Git Monitor: 打开设置",
+        "icon": "$(gear)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "gitMonitor.addRepo",
+          "when": "view == gitMonitor.repoList",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gitMonitor.refreshAll",
+          "when": "view == gitMonitor.repoList",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gitMonitor.openSettings",
+          "when": "view == gitMonitor.repoList"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "gitMonitor.openDetail",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gitMonitor.refreshRepo",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gitMonitor.openInExplorer",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "3_open@1"
+        },
+        {
+          "command": "gitMonitor.openInTerminal",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "3_open@2"
+        },
+        {
+          "command": "gitMonitor.removeRepo",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "7_modification"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Git Monitor",
+      "properties": {
+        "gitMonitor.autoRefresh.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否启用自动轮询刷新"
+        },
+        "gitMonitor.autoRefresh.intervalSec": {
+          "type": "number",
+          "default": 60,
+          "minimum": 30,
+          "maximum": 3600,
+          "description": "自动刷新间隔（秒）"
+        },
+        "gitMonitor.refresh.concurrency": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 16,
+          "description": "全部刷新时的并发上限"
+        },
+        "gitMonitor.refresh.timeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "单次 git 命令超时（毫秒）"
+        },
+        "gitMonitor.detail.commitCount": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "详情面板显示的提交历史条数"
+        },
+        "gitMonitor.detail.showFileStats": {
+          "type": "boolean",
+          "default": true,
+          "description": "详情面板是否展示文件增删行数"
+        },
+        "gitMonitor.git.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "git 可执行文件路径，留空则使用 PATH 中的 git"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "echo \"(lint skipped)\"",
+    "package": "vsce package --no-yarn"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.4.0"
+  }
+}
