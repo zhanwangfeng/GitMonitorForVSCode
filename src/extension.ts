@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import { ConfigStore } from './services/ConfigStore';
 import { GitInfoService } from './services/GitInfoService';
 import { RepoMonitor } from './services/RepoMonitor';
+import { OperationHistory } from './services/OperationHistory';
 import { RefreshScheduler } from './services/RefreshScheduler';
 import { RepoTreeProvider } from './views/RepoTreeProvider';
 import { DetailPanel } from './panels/DetailPanel';
+import { GitOpsController } from './commands/gitOps';
 import { createAddRepoCommand } from './commands/addRepo';
 import { createRemoveRepoCommand } from './commands/removeRepo';
 import { createRefreshAllCommand, createRefreshRepoCommand } from './commands/refresh';
@@ -13,6 +15,7 @@ import {
     createOpenInExplorerCommand, createOpenInTerminalCommand,
     createOpenInNewWindowCommand, createOpenSettingsCommand,
 } from './commands/openActions';
+import { createGitOpCommands } from './commands/gitOpsCommands';
 import { detectGit } from './utils/gitRunner';
 import { logger } from './utils/logger';
 
@@ -43,7 +46,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const gitService = new GitInfoService();
     monitor = new RepoMonitor(configStore, gitService);
     scheduler = new RefreshScheduler(monitor);
-    detailPanel = new DetailPanel(configStore, monitor, gitService, context.extensionUri);
+    const history = new OperationHistory(context);
+    detailPanel = new DetailPanel(configStore, monitor, gitService, context.extensionUri, history);
 
     // 注册视图
     const provider = new RepoTreeProvider(configStore, monitor);
@@ -65,6 +69,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     register('gitMonitor.openInTerminal', createOpenInTerminalCommand());
     register('gitMonitor.openInNewWindow', createOpenInNewWindowCommand());
     register('gitMonitor.openSettings', createOpenSettingsCommand());
+
+    // v1.1.0: 注册 Git 写操作命令（右键菜单/命令面板触发，作用于选中仓库）
+    const opsController = new GitOpsController(gitService, monitor, history);
+    const noopCallbacks = {
+        onBusy: () => { /* 命令面板触发时不需要 busy UI */ },
+        onDone: (result: { success: boolean; message?: string }, _action: string) => {
+            if (result.success) {
+                vscode.window.showInformationMessage(`Git Monitor: ${result.message}`);
+            } else {
+                vscode.window.showErrorMessage(`Git Monitor: ${result.message}`);
+            }
+        },
+    };
+    for (const cmd of createGitOpCommands(configStore, gitService, opsController, noopCallbacks, detailPanel)) {
+        register(cmd.id, cmd.handler);
+    }
 
     // 监听状态变化 → 同步刷新详情面板（若正在显示该仓库）
     context.subscriptions.push(
@@ -90,7 +110,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push({ dispose: () => monitor?.dispose() });
     context.subscriptions.push({ dispose: () => detailPanel?.dispose() });
 
-    logger.info('Git Monitor activated');
+    logger.info('Git Monitor activated (v1.1.0)');
 }
 
 export function deactivate(): void {

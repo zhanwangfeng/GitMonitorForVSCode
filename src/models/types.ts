@@ -77,6 +77,23 @@ export interface BranchInfo {
     remote: string[];
 }
 
+/** stash 条目 */
+export interface StashEntry {
+    /** stash@{index} 中的索引 */
+    index: number;
+    message: string;
+}
+
+/** 标签信息 */
+export interface TagInfo {
+    name: string;
+    annotated: boolean;
+    message?: string;
+    /** 指向 commit 的短 hash */
+    commit: string;
+    date?: string;
+}
+
 /** 详情面板渲染所需的完整数据 */
 export interface RepoDetailData {
     config: RepoConfig;
@@ -84,13 +101,42 @@ export interface RepoDetailData {
     commits: CommitInfo[];
     changes: FileChange[];
     branches: BranchInfo;
+    stashes: StashEntry[];
+    tags: TagInfo[];
+    /** 是否有写操作进行中（用于禁用按钮） */
+    busy: boolean;
+    /** 最近一次操作结果 */
+    lastResult?: OperationResult;
+    /** 冲突文件列表（非空表示存在未解决冲突） */
+    conflicts: string[];
+}
+
+/** 单次操作结果反馈给 Webview */
+export interface OperationResult {
+    action: string;
+    success: boolean;
+    message?: string;
+    timestamp: number;
+}
+
+/** 持久化的操作历史条目 */
+export interface RepoOperation {
+    repoId: string;
+    action: string;
+    status: 'running' | 'success' | 'failed';
+    message?: string;
+    startedAt: number;
+    finishedAt?: number;
 }
 
 /** 主进程 → Webview 消息 */
 export type DetailMessage =
     | { type: 'render'; data: RepoDetailData }
     | { type: 'loading'; repoId: string }
-    | { type: 'error'; message: string };
+    | { type: 'error'; message: string }
+    | { type: 'busy'; busy: boolean }
+    | { type: 'operationResult'; result: OperationResult }
+    | { type: 'conflict'; files: string[] };
 
 /** Webview → 主进程消息 */
 export type WebviewAction =
@@ -98,7 +144,27 @@ export type WebviewAction =
     | { action: 'openInExplorer' }
     | { action: 'openInTerminal' }
     | { action: 'openInNewWindow' }
-    | { action: 'copyPath' };
+    | { action: 'copyPath' }
+    // v1.1.0 写操作
+    | { action: 'stage'; path: string }
+    | { action: 'unstage'; path: string }
+    | { action: 'stageAll' }
+    | { action: 'unstageAll' }
+    | { action: 'commit'; message: string; amend?: boolean }
+    | { action: 'pull' }
+    | { action: 'push' }
+    | { action: 'fetch' }
+    | { action: 'checkout'; branch: string }
+    | { action: 'createBranch'; name: string; from?: string }
+    | { action: 'deleteBranch'; branch: string; force?: boolean }
+    | { action: 'stash'; message?: string }
+    | { action: 'stashPop'; index: number }
+    | { action: 'stashDrop'; index: number }
+    | { action: 'merge'; branch: string }
+    | { action: 'discard'; path: string }
+    | { action: 'viewDiff'; path: string; staged: boolean }
+    | { action: 'createTag'; name: string; message?: string; commit?: string }
+    | { action: 'deleteTag'; name: string };
 
 /** 状态摘要级别，用于决定图标与颜色 */
 export type StatusLevel = 'clean' | 'dirty' | 'ahead' | 'behind' | 'error' | 'unknown';

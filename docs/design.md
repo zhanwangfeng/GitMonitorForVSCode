@@ -475,6 +475,7 @@ GitMonitorForVSCode/
 - v0.2.0：F9 分支切换、F12 快捷操作、F13 自动轮询。
 - v0.3.0：F14 状态栏提示、文件行变更统计优化、性能调优。
 - v1.0.0：稳定性与多平台兼容性验证，发布 Marketplace。
+- v1.1.0：细化 Git 常规操作（暂存/提交/拉取/推送/分支/合并/暂存区/差异/标签），详见第 15 章。
 
 ---
 
@@ -486,3 +487,232 @@ GitMonitorForVSCode/
 5. 在仓库中执行 `touch new.txt` 后刷新，详情面板的「未跟踪」数 +1。
 6. 右键「移除监控」后条目消失，且本地目录文件未被删除。
 7. 重启 VSCode 后仓库列表依然存在（globalState 持久化生效）。
+
+---
+
+## 15. v1.1.0：Git 常规操作细化
+
+> 在 v1.0.0 只读监控能力基础上，补齐日常高频 Git 写操作，使插件具备「轻量 Git GUI」能力。所有写操作遵循「读多写少、危险操作二次确认」原则，不替代专业 Git 客户端。
+
+### 15.1 功能清单
+| 编号 | 功能 | 优先级 | 说明 |
+| --- | --- | --- | --- |
+| G1 | 文件暂存/取消暂存 | P0 | 单文件 + 批量（全部暂存/全部取消） |
+| G2 | 提交 | P0 | 输入提交信息提交；支持 `--amend` 修补上次提交 |
+| G3 | 拉取 | P0 | 默认 `--ff-only`，冲突时不自动合并 |
+| G4 | 推送 | P0 | 推送到上游；无上游时提示设置 `-u` |
+| G5 | 获取 | P1 | `git fetch`，仅更新远端引用 |
+| G6 | 切换分支 | P0 | checkout 已有本地/远程分支 |
+| G7 | 新建分支 | P1 | 从当前 HEAD 创建并切换 |
+| G8 | 删除分支 | P1 | 安全删除；含未合并提交时提示是否强制 |
+| G9 | 暂存区 stash | P1 | 暂存/恢复/丢弃；支持多条 stash 列表 |
+| G10 | 合并 merge | P1 | 选择分支合并到当前；冲突时进入解决流程 |
+| G11 | 撤销修改 | P1 | 单文件 checkout；整库 `reset --hard` 需二次确认 |
+| G12 | 查看差异 | P0 | 调用 VSCode 内置 diff editor 展示 |
+| G13 | 标签管理 | P2 | 创建/删除/列出 tag；支持注解标签 |
+| G14 | 冲突解决 | P2 | 标记冲突文件并提供「在编辑器中解决」入口 |
+| G15 | 操作历史 | P2 | 记录最近 50 条写操作，便于失败诊断 |
+
+### 15.2 Git 命令映射
+| 操作 | Git 命令 | 说明 |
+| --- | --- | --- |
+| 暂存单文件 | `git add -- <file>` | 使用 `--` 防止路径歧义 |
+| 暂存全部 | `git add -A` | |
+| 取消暂存单文件 | `git reset HEAD -- <file>` | |
+| 取消暂存全部 | `git reset HEAD` | |
+| 提交 | `git commit -m <msg>` | amend 时追加 `--amend --no-edit` 或新消息 |
+| 拉取 | `git pull --ff-only` | 失败提示用户选择 merge/rebase/中止 |
+| 推送 | `git push` | 无上游时 `git push -u origin <branch>` |
+| 获取 | `git fetch --all --prune` | |
+| 切换分支 | `git checkout <branch>` | 远程分支自动创建本地跟踪分支 |
+| 新建分支 | `git checkout -b <name>` | |
+| 删除分支 | `git branch -d <branch>` | 强制 `-D` 需用户确认 |
+| 暂存改动 | `git stash push -m <msg>` | |
+| 恢复暂存 | `git stash pop` / `git stash apply` | pop 失败时回退为 apply |
+| 丢弃暂存 | `git stash drop <id>` | |
+| 合并 | `git merge <branch>` | |
+| 撤销单文件 | `git checkout -- <file>` | |
+| 整库重置 | `git reset --hard HEAD` | 危险操作，二次确认 |
+| 查看 diff | `git diff -- <file>` / `git diff --cached -- <file>` | 通过 VSCode `commands.executeCommand('vscode.diff', ...)` |
+| 创建标签 | `git tag -a <name> -m <msg>` | 轻量标签省略 `-a -m` |
+| 删除标签 | `git tag -d <name>` | |
+
+### 15.3 UI 设计
+1. **详情面板顶部操作栏扩展**：
+   ```
+   仓库标题 + 当前分支 + [刷新][提交][拉取][推送][获取][终端][资源管理器]
+   ```
+2. **文件变更区每行新增内联按钮**：
+   - 未暂存：`[+暂存]`
+   - 已暂存：`[-取消暂存]`
+   - 已修改：`[撤销]`（危险）
+   - 未跟踪：`[删除文件]`（危险）
+   - 任意文件：`[查看差异]`
+3. **分支列表区**：
+   - 每行末尾增加 `[切换]` 按钮
+   - 右键菜单：「新建分支」「删除分支」「重命名分支」
+4. **新增「暂存区」分区**（位于文件变更下方）：
+   - 列出 `git stash list`
+   - 每条提供 `[恢复]` `[丢弃]`
+5. **差异视图**：复用 VSCode 内置 diff editor，不自行实现。
+6. **操作进行中**：按钮显示 loading 状态并禁用，避免并发触发。
+
+### 15.4 新增命令清单
+| 命令 ID | 标题 | 触发位置 |
+| --- | --- | --- |
+| `gitMonitor.stageFile` | 暂存文件 | 详情文件行 |
+| `gitMonitor.unstageFile` | 取消暂存 | 详情文件行 |
+| `gitMonitor.stageAll` | 全部暂存 | 详情工具栏 |
+| `gitMonitor.unstageAll` | 全部取消暂存 | 详情工具栏 |
+| `gitMonitor.commit` | 提交 | 详情工具栏 |
+| `gitMonitor.pull` | 拉取 | 详情工具栏 |
+| `gitMonitor.push` | 推送 | 详情工具栏 |
+| `gitMonitor.fetch` | 获取 | 详情工具栏 |
+| `gitMonitor.checkoutBranch` | 切换分支 | 分支列表行 |
+| `gitMonitor.createBranch` | 新建分支 | 分支区右键 |
+| `gitMonitor.deleteBranch` | 删除分支 | 分支区右键 |
+| `gitMonitor.stash` | 暂存改动 | 详情工具栏 |
+| `gitMonitor.stashPop` | 恢复暂存 | stash 列表行 |
+| `gitMonitor.stashDrop` | 丢弃暂存 | stash 列表行 |
+| `gitMonitor.merge` | 合并分支 | 分支区右键 |
+| `gitMonitor.discardFile` | 撤销文件修改 | 详情文件行 |
+| `gitMonitor.viewDiff` | 查看差异 | 详情文件行 |
+| `gitMonitor.createTag` | 创建标签 | 提交历史右键 |
+| `gitMonitor.deleteTag` | 删除标签 | 标签列表行 |
+
+### 15.5 消息协议扩展
+Webview → 主进程（`onDidReceiveMessage`）新增：
+```ts
+type WebviewAction =
+  | { action: 'stage'; path: string }
+  | { action: 'unstage'; path: string }
+  | { action: 'stageAll' }
+  | { action: 'unstageAll' }
+  | { action: 'commit'; message: string; amend?: boolean }
+  | { action: 'pull' }
+  | { action: 'push' }
+  | { action: 'fetch' }
+  | { action: 'checkout'; branch: string }
+  | { action: 'createBranch'; name: string; from?: string }
+  | { action: 'deleteBranch'; branch: string; force?: boolean }
+  | { action: 'stash'; message?: string }
+  | { action: 'stashPop'; index: number }
+  | { action: 'stashDrop'; index: number }
+  | { action: 'merge'; branch: string }
+  | { action: 'discard'; path: string }
+  | { action: 'viewDiff'; path: string; staged: boolean }
+  | { action: 'createTag'; name: string; message?: string; commit?: string }
+  | { action: 'deleteTag'; name: string };
+```
+
+主进程 → Webview（`postMessage`）新增：
+```ts
+type DetailMessage =
+  | { type: 'operationResult'; action: string; success: boolean; message?: string }
+  | { type: 'conflict'; files: string[] };  // 合并/拉取冲突时推送
+```
+
+### 15.6 数据模型扩展
+```ts
+interface RepoOperation {
+  repoId: string;
+  action: string;            // 对应 WebviewAction.action
+  status: 'running' | 'success' | 'failed';
+  message?: string;          // 失败原因或成功摘要
+  startedAt: number;
+  finishedAt?: number;
+}
+
+interface StashEntry {
+  index: number;             // stash@{index}
+  message: string;
+  date: string;
+}
+
+interface TagInfo {
+  name: string;
+  annotated: boolean;
+  message?: string;
+  commit: string;            // 指向的 commit shortHash
+  date?: string;
+}
+```
+- `RepoOperation[]` 持久化到 `globalState`，每仓库保留最近 50 条。
+
+### 15.7 关键交互流程
+
+#### 15.7.1 提交
+```
+点击 [提交]
+   │
+   ▼
+弹出输入框（提交信息必填 + ☐ amend 上次提交）
+   │
+   ▼
+检测是否有暂存内容 ──否──▶ 提示「无暂存内容，是否提交全部？」
+   │是                                     │是
+   ▼                                       ▼
+执行 git commit                            先 git add -A 再 commit
+   │
+   ▼
+刷新状态 + 详情面板 + 操作历史
+   │
+   ▼
+成功提示（含 shortHash）
+```
+
+#### 15.7.2 拉取
+```
+点击 [拉取]
+   │
+   ▼
+git pull --ff-only
+   │
+   ├─成功──▶ 刷新 + 提示「已更新」
+   │
+   └─失败──▶ 判断错误类型
+              │
+              ├─无上游──▶ 提示设置上游
+              ├─冲突──▶ 推送 {type:'conflict'} → 标记冲突文件 → 引导解决
+              └─其他──▶ 展示错误信息 + 操作历史记录
+```
+
+#### 15.7.3 危险操作确认
+以下操作必须二次确认（`window.showWarningMessage` + 显式按钮）：
+- 删除分支（强制 `-D`）
+- `reset --hard`
+- `push --force` / `--force-with-lease`
+- 删除未跟踪文件
+- 撤销文件修改
+- 丢弃 stash
+
+### 15.8 安全与边界
+- **并发保护**：同一仓库写操作进行中，禁用该仓库其他写操作按钮（读操作不受影响）。
+- **冲突状态检测**：进入操作前检测 `git status`，若存在未解决冲突则禁用 pull/merge/checkout，提示先解决冲突。
+- **上游缺失检测**：push 前检测 `@{u}`，缺失时弹窗询问是否 `push -u origin <branch>`。
+- **拉取策略**：默认 `--ff-only`，冲突不自动 merge/rebase，避免用户不知情下产生合并提交。
+- **操作日志**：所有写操作记录到 `RepoOperation[]`，失败时附带 stderr 摘要，便于诊断。
+- **路径安全**：所有涉及文件路径的命令使用 `execFile` 参数数组 + `--` 分隔，杜绝注入。
+- **不自动清理**：不主动执行 `gc`、`clean`、`prune` 等可能造成数据丢失的命令。
+
+### 15.9 配置项扩展
+```jsonc
+{
+  "gitMonitor.operations.confirmDangerous": true,      // 危险操作二次确认开关
+  "gitMonitor.operations.pullStrategy": "ff-only",     // ff-only | merge | rebase
+  "gitMonitor.operations.defaultPushRemote": "origin", // 默认推送远端
+  "gitMonitor.operations.historySize": 50,             // 操作历史保留条数
+  "gitMonitor.operations.enableStash": true,           // 是否显示 stash 分区
+  "gitMonitor.operations.enableTag": true              // 是否启用标签管理
+}
+```
+
+### 15.10 验收标准（v1.1.0 增项）
+1. 详情面板顶部出现「提交/拉取/推送/获取」按钮，点击可执行对应操作并刷新状态。
+2. 文件变更区每行可单独「暂存/取消暂存/撤销/查看差异」。
+3. 点击「提交」输入信息后，`git log` 顶部出现新提交。
+4. 修改文件后「拉取」遇冲突时，详情面板高亮提示冲突文件，不自动合并。
+5. 分支列表可「切换/新建/删除」，删除含未合并提交的分支时弹出强制确认。
+6. 「暂存区」分区可查看 stash 列表，并能恢复/丢弃。
+7. 危险操作（reset --hard、强制删除分支等）均需二次确认方可执行。
+8. 所有写操作可在「操作历史」中查看成功/失败与错误信息。

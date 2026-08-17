@@ -2,7 +2,7 @@
   "name": "gitmonitor-for-vscode",
   "displayName": "Git Monitor",
   "description": "在 VSCode 侧边栏集中监控多个本地 Git 仓库的状态、分支、提交与文件变更。",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "publisher": "zhanwangfeng",
   "license": "MIT",
   "engines": {
@@ -71,6 +71,82 @@
         "command": "gitMonitor.openSettings",
         "title": "Git Monitor: 打开设置",
         "icon": "$(gear)"
+      },
+      {
+        "command": "gitMonitor.stageFile",
+        "title": "Git Monitor: 暂存文件"
+      },
+      {
+        "command": "gitMonitor.unstageFile",
+        "title": "Git Monitor: 取消暂存文件"
+      },
+      {
+        "command": "gitMonitor.stageAll",
+        "title": "Git Monitor: 全部暂存"
+      },
+      {
+        "command": "gitMonitor.unstageAll",
+        "title": "Git Monitor: 取消全部暂存"
+      },
+      {
+        "command": "gitMonitor.commit",
+        "title": "Git Monitor: 提交"
+      },
+      {
+        "command": "gitMonitor.pull",
+        "title": "Git Monitor: 拉取"
+      },
+      {
+        "command": "gitMonitor.push",
+        "title": "Git Monitor: 推送"
+      },
+      {
+        "command": "gitMonitor.fetch",
+        "title": "Git Monitor: 获取"
+      },
+      {
+        "command": "gitMonitor.checkoutBranch",
+        "title": "Git Monitor: 切换分支"
+      },
+      {
+        "command": "gitMonitor.createBranch",
+        "title": "Git Monitor: 新建分支"
+      },
+      {
+        "command": "gitMonitor.deleteBranch",
+        "title": "Git Monitor: 删除分支"
+      },
+      {
+        "command": "gitMonitor.stash",
+        "title": "Git Monitor: 暂存改动"
+      },
+      {
+        "command": "gitMonitor.stashPop",
+        "title": "Git Monitor: 恢复暂存"
+      },
+      {
+        "command": "gitMonitor.stashDrop",
+        "title": "Git Monitor: 丢弃暂存"
+      },
+      {
+        "command": "gitMonitor.merge",
+        "title": "Git Monitor: 合并分支"
+      },
+      {
+        "command": "gitMonitor.discardFile",
+        "title": "Git Monitor: 撤销文件修改"
+      },
+      {
+        "command": "gitMonitor.viewDiff",
+        "title": "Git Monitor: 查看差异"
+      },
+      {
+        "command": "gitMonitor.createTag",
+        "title": "Git Monitor: 创建标签"
+      },
+      {
+        "command": "gitMonitor.deleteTag",
+        "title": "Git Monitor: 删除标签"
       }
     ],
     "menus": {
@@ -100,6 +176,41 @@
           "command": "gitMonitor.refreshRepo",
           "when": "view == gitMonitor.repoList && viewItem == repo",
           "group": "navigation@2"
+        },
+        {
+          "command": "gitMonitor.commit",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "2_gitops@1"
+        },
+        {
+          "command": "gitMonitor.pull",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "2_gitops@2"
+        },
+        {
+          "command": "gitMonitor.push",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "2_gitops@3"
+        },
+        {
+          "command": "gitMonitor.fetch",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "2_gitops@4"
+        },
+        {
+          "command": "gitMonitor.stash",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "2_gitops@5"
+        },
+        {
+          "command": "gitMonitor.createBranch",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "2_gitops@6"
+        },
+        {
+          "command": "gitMonitor.createTag",
+          "when": "view == gitMonitor.repoList && viewItem == repo",
+          "group": "2_gitops@7"
         },
         {
           "command": "gitMonitor.openInExplorer",
@@ -161,6 +272,44 @@
           "type": "string",
           "default": "",
           "description": "git 可执行文件路径，留空则使用 PATH 中的 git"
+        },
+        "gitMonitor.operations.confirmDangerous": {
+          "type": "boolean",
+          "default": true,
+          "description": "危险操作（强制删除分支、reset --hard、撤销修改、丢弃 stash 等）是否需要二次确认"
+        },
+        "gitMonitor.operations.pullStrategy": {
+          "type": "string",
+          "enum": ["ff-only", "merge", "rebase"],
+          "default": "ff-only",
+          "enumDescriptions": [
+            "仅快进合并，冲突时不自动合并（推荐）",
+            "产生冲突时自动创建合并提交",
+            "变基到上游分支"
+          ],
+          "description": "拉取策略"
+        },
+        "gitMonitor.operations.defaultPushRemote": {
+          "type": "string",
+          "default": "origin",
+          "description": "默认推送远端名（用于 push -u 设置上游）"
+        },
+        "gitMonitor.operations.historySize": {
+          "type": "number",
+          "default": 50,
+          "minimum": 0,
+          "maximum": 500,
+          "description": "每仓库保留的操作历史条数"
+        },
+        "gitMonitor.operations.enableStash": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用 stash 分区"
+        },
+        "gitMonitor.operations.enableTag": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用标签管理"
         }
       }
     }
