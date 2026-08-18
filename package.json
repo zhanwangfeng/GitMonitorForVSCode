@@ -2,7 +2,7 @@
   "name": "gitmonitor-for-vscode",
   "displayName": "GitMonitor",
   "description": "在 VSCode 侧边栏集中监控多个本地 Git 仓库的状态、分支、提交与文件变更。",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "publisher": "zhanwangfeng",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -23,7 +23,7 @@
         {
           "id": "gitMonitor",
           "title": "Git Monitor",
-          "icon": "media/icon.svg"
+          "icon": "media/icon.png"
         }
       ]
     },
